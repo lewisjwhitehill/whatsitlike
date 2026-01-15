@@ -1,31 +1,128 @@
 # Initialize the model
+import json
 from langchain.chat_models import init_chat_model
 from langchain.prompts import ChatPromptTemplate
 
 from api.weather import get_city_weather
 
-model = init_chat_model('gpt-4o-mini', temperature=0.3)
+model = init_chat_model("gpt-4o-mini", temperature=0.3)
 
-prompt = ChatPromptTemplate.from_messages([
-    ("system", "You are a weather assistant. Your job has three tasks: process the passed in weather information, "
-    "reference your own data on the same requested date range, and finally combine the previous two into a helpful"
-    "response for someone interested in visited said area during the provided date range."),
-    ("user", "Location: {location}\nDate Range: {start_date} to {end_date}\n\nForecast Data: {forecast_data}\nClimatology Data: {climatology_data}\nWeather Events: {events_data}\n\nFormat this into a clear, helpful response with temperatures in both Celsius and Fahrenheit.")
-])
+# -------------------------
+# Prompt templates
+# -------------------------
 
-# Single LLM call to format response
-chain = prompt | model
+forecast_prompt = ChatPromptTemplate.from_messages(
+    [
+        (
+            "system",
+            "You are a practical weather assistant for travelers. "
+            "Use ONLY the data provided by the user. If a field is missing or says it's unavailable, do not invent it. "
+            "Write clearly and concisely. Prefer actionable guidance.",
+        ),
+        (
+            "user",
+            "Trip location: {location}\n"
+            "Date range: {start_date} to {end_date}\n\n"
+            "FORECAST (daily + summary stats):\n"
+            "{forecast}\n\n"
+            "WEATHER EVENTS / NOTES:\n"
+            "{events}\n\n"
+            "Task:\n"
+            "1) Give a short overview of the overall conditions across the date range.\n"
+            "2) Call out any notable day-to-day changes (warming/cooling trend, rainier days, etc.).\n"
+            "3) Provide practical packing / planning advice.\n"
+            "4) Include temperatures in BOTH Celsius and Fahrenheit.\n"
+            "5) If forecast summary stats are present, use them for numbers (don’t recompute).",
+        ),
+    ]
+)
+
+climatology_prompt = ChatPromptTemplate.from_messages(
+    [
+        (
+            "system",
+            "You are a practical weather assistant for travelers. "
+            "Use ONLY the data provided by the user. If a field is missing or says it's unavailable, do not invent it. "
+            "This request is for historical/climatology context (what's typical), not a day-by-day forecast.",
+        ),
+        (
+            "user",
+            "Trip location: {location}\n"
+            "Date range: {start_date} to {end_date}\n\n"
+            "CLIMATOLOGY (historical averages over multiple years):\n"
+            "{climatology}\n\n"
+            "WEATHER EVENTS / NOTES:\n"
+            "{events}\n\n"
+            "Task:\n"
+            "1) Explain what conditions are typically like for that location and date range.\n"
+            "2) Interpret the averages (what they mean for comfort, rain likelihood, etc.).\n"
+            "3) Provide practical packing / planning advice.\n"
+            "4) Include temperatures in BOTH Celsius and Fahrenheit.\n"
+            "5) If years_analyzed is present, mention it as context.",
+        ),
+    ]
+)
+
+forecast_chain = forecast_prompt | model
+climatology_chain = climatology_prompt | model
+
+
+def _to_pretty_json(value) -> str:
+    """Make nested dict/list data readable in the prompt."""
+    if value is None:
+        return "Not available."
+    if isinstance(value, str):
+        return value if value.strip() else "Not available."
+    try:
+        return json.dumps(value, indent=2, ensure_ascii=False)
+    except TypeError:
+        # fallback for non-serializable objects
+        return str(value)
+
 
 def format_response(query: str):
-    weather_data = get_city_weather(query)
+    """
+    Returns the model response formatted from either forecast data or climatology data.
+    Expects get_city_weather(query) to return a dict that may include:
+      - location: {"name": str, "country": str} OR a string
+      - date_range: {"start": str, "end": str} OR start_date/end_date
+      - forecast: {"daily": [...], "summary": {...}} OR similar
+      - climatology: {...}
+      - events: {...} or string
+    """
+    weather_data = get_city_weather(query) or {}
 
-    llmData = {
-        
+    # Location string
+    loc = weather_data.get("location")
+    if isinstance(loc, dict):
+        location_str = ", ".join([p for p in [loc.get("name"), loc.get("country")] if p])
+    else:
+        location_str = str(loc) if loc else "Unknown location"
+
+    # Date range
+    dr = weather_data.get("date_range") or {}
+    start_date = dr.get("start") or weather_data.get("start_date") or "Unknown start"
+    end_date = dr.get("end") or weather_data.get("end_date") or "Unknown end"
+
+    # Payloads (pretty JSON for readability)
+    forecast_payload = weather_data.get("forecast") or weather_data.get("forecast_data")
+    climatology_payload = weather_data.get("climatology") or weather_data.get("climatology_data")
+
+    llm_data = {
+        "location": location_str,
+        "start_date": start_date,
+        "end_date": end_date,
+        "forecast": _to_pretty_json(forecast_payload),
+        "climatology": _to_pretty_json(climatology_payload),
     }
 
-    if weather_data["near"] == 1:
+    # Choose chain: prefer forecast when present, otherwise climatology when present
+    if forecast_payload is not None:
+        return forecast_chain.invoke(llm_data)
+    if climatology_payload is not None:
+        return climatology_chain.invoke(llm_data)
 
-
-    response = chain.invoke(weather_data)
-    
-    return response
+    # Fallback: nothing usable
+    llm_data["forecast"] = "Not available."
+    llm_data["climatology"] = "Not available."
+    return forecast_chain.invoke(llm_data)
