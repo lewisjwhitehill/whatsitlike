@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-from llm.agent import get_city_weather  # your LangChain-powered fn
+from api.weather import get_city_weather  
 
 app = FastAPI()
 
@@ -14,4 +14,9 @@ async def weather(query: str):
     Returns:
         Dictionary with weather information including summary, temperatures, and warnings
     """
-    return await get_city_weather(query)
+    weather_data = await get_city_weather(query)
+    return weather_data
+    # if weather_data["near"] == 1:
+    #     return weather_data["forecast"]
+    # else:
+    #     return weather_data["climatology"]

@@ -1,5 +1,5 @@
 dev:
-	uv run uvicorn main:app --reload
+	uv run python -m uvicorn main:app --reload
 
 run:
 	uv run uvicorn main:app
