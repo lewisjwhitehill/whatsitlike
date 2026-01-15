@@ -49,7 +49,7 @@ def get_forecast(city: str, start_date: str, end_date: str):
         return {"error": f"Failed to fetch forecast: {str(e)}"}
 
 
-async def get_city_weather(query: str) -> dict:
+def get_city_weather(query: str) -> dict:
     """
     Main function to get weather information for a city based on a natural language query.
     
@@ -63,24 +63,35 @@ async def get_city_weather(query: str) -> dict:
     location, start_date, end_date = extract_date_range(query)
     print(f"Location: {location}, Start Date: {start_date}, End Date: {end_date}")
     
-    # Prepare the user message with parsed information
+    # Prepare the structured weather data
     if start_date and end_date:
         # returns date in YYYY-MM-DD format
         start_date_str = format_date_for_api(start_date)
         end_date_str = format_date_for_api(end_date)
+
         forecast = None
         climatology = None
         near = 0
 
+        # Decide which backend to call based on how far out the dates are
         if is_near_term(start_date, end_date):
             forecast = get_forecast(location, start_date_str, end_date_str)
             near = 1
         else:
-            climatology = get_climatology_data(location, start_date_str, end_date_str)
+            climatology = get_climatology(location, start_date_str, end_date_str)
+
         return {
+            "location": location,
+            "date_range": {
+                "start": start_date_str,
+                "end": end_date_str,
+            },
+            # keep these for convenience / compatibility
+            "start_date": start_date_str,
+            "end_date": end_date_str,
             "forecast": forecast,
             "climatology": climatology,
-            "near": near
+            "near": near,
         }
     else:
-        return error_response("No date range found in query")
+        return {"error": "No date range found in query"}
