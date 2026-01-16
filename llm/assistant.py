@@ -1,11 +1,13 @@
 # Initialize the model
 import json
-from langchain.chat_models import init_chat_model
-from langchain.prompts import ChatPromptTemplate
+from langchain_openai import ChatOpenAI
+from langchain_core.prompts import ChatPromptTemplate
 
 from api.weather import get_city_weather
 
-model = init_chat_model("gpt-4o-mini", temperature=0.3)
+
+model = ChatOpenAI(model="gpt-4o-mini", temperature=0.3)
+
 
 # -------------------------
 # Prompt templates
@@ -25,8 +27,6 @@ forecast_prompt = ChatPromptTemplate.from_messages(
             "Date range: {start_date} to {end_date}\n\n"
             "FORECAST (daily + summary stats):\n"
             "{forecast}\n\n"
-            "WEATHER EVENTS / NOTES:\n"
-            "{events}\n\n"
             "Task:\n"
             "1) Give a short overview of the overall conditions across the date range.\n"
             "2) Call out any notable day-to-day changes (warming/cooling trend, rainier days, etc.).\n"
@@ -51,8 +51,6 @@ climatology_prompt = ChatPromptTemplate.from_messages(
             "Date range: {start_date} to {end_date}\n\n"
             "CLIMATOLOGY (historical averages over multiple years):\n"
             "{climatology}\n\n"
-            "WEATHER EVENTS / NOTES:\n"
-            "{events}\n\n"
             "Task:\n"
             "1) Explain what conditions are typically like for that location and date range.\n"
             "2) Interpret the averages (what they mean for comfort, rain likelihood, etc.).\n"
@@ -80,7 +78,7 @@ def _to_pretty_json(value) -> str:
         return str(value)
 
 
-def format_response(query: str):
+def formulate_response(query: str):
     """
     Returns the model response formatted from either forecast data or climatology data.
     Expects get_city_weather(query) to return a dict that may include:
@@ -88,7 +86,6 @@ def format_response(query: str):
       - date_range: {"start": str, "end": str} OR start_date/end_date
       - forecast: {"daily": [...], "summary": {...}} OR similar
       - climatology: {...}
-      - events: {...} or string
     """
     weather_data = get_city_weather(query) or {}
 
@@ -117,12 +114,16 @@ def format_response(query: str):
     }
 
     # Choose chain: prefer forecast when present, otherwise climatology when present
+    # maybe add the content extraction as part of the pipeline?
     if forecast_payload is not None:
-        return forecast_chain.invoke(llm_data)
+        result = forecast_chain.invoke(llm_data)
+        return result.content
     if climatology_payload is not None:
-        return climatology_chain.invoke(llm_data)
+        result = climatology_chain.invoke(llm_data)
+        return result.content
 
     # Fallback: nothing usable
     llm_data["forecast"] = "Not available."
     llm_data["climatology"] = "Not available."
-    return forecast_chain.invoke(llm_data)
+    result = forecast_chain.invoke(llm_data)
+    return result.content

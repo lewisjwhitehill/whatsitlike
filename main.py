@@ -1,22 +1,17 @@
-from fastapi import FastAPI
-from api.weather import get_city_weather  
+from fastapi import FastAPI, HTTPException
+from llm.assistant import formulate_response
 
 app = FastAPI()
 
 @app.get("/weather")
 async def weather(query: str):
-    """
-    Get weather information for a location and date range.
-    
-    Args:
-        query: Natural language query like "Costa rica 7/1-7/14" or "New York next week"
-    
-    Returns:
-        Dictionary with weather information including summary, temperatures, and warnings
-    """
-    weather_data = await get_city_weather(query)
-    return weather_data
-    # if weather_data["near"] == 1:
-    #     return weather_data["forecast"]
-    # else:
-    #     return weather_data["climatology"]
+    if not query.strip():
+        raise HTTPException(status_code=400, detail="Query must not be empty")
+
+    try:
+        summary = formulate_response(query)
+    except Exception as e:
+        # TODO: add logging here if you want
+        raise HTTPException(status_code=500, detail="Failed to generate weather summary")
+
+    return {"summary": summary}
