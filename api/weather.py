@@ -40,9 +40,7 @@ def get_forecast(city: str, start_date: str, end_date: str):
         end_date: End date in YYYY-MM-DD format
     """
     try:
-        start_dt = datetime.strptime(start_date, "%Y-%m-%d")
-        end_dt = datetime.strptime(end_date, "%Y-%m-%d")
-        return get_forecast_data(city, start_dt, end_dt)
+        return get_forecast_data(city, start_date, end_date)
     except ValueError as e:
         return {"error": f"Invalid date format: {str(e)}"}
     except Exception as e:

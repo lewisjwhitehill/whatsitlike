@@ -1,6 +1,18 @@
 import requests
 from api.geocode import geocodeCity
 
+WEATHER_CODE_MAP = {
+    0: "Clear sky",
+    1: "Mainly clear",
+    2: "Partly cloudy",
+    3: "Overcast",
+    61: "Rain",
+    63: "Moderate rain",
+    65: "Heavy rain",
+    71: "Snow",
+    95: "Thunderstorm",
+}
+
 def get_forecast_data(city: str, start_date: str, end_date: str):
     """
     Get weather forecast for a city within a date range.
@@ -13,6 +25,10 @@ def get_forecast_data(city: str, start_date: str, end_date: str):
     location = geocodeCity(city)
     lat = location.latitude
     lon = location.longitude
+
+    print("DEBUG start_date:", repr(start_date), type(start_date))
+    print("DEBUG end_date:", repr(end_date), type(end_date))    
+    
 
     params = {
         "latitude": lat,
@@ -38,9 +54,11 @@ def get_forecast_data(city: str, start_date: str, end_date: str):
     days = []
 
     for i, date in enumerate(daily["time"]):
+        weather_code = daily["weather_code"][i]
         days.append({
             "date": date,
-            "weather_code": daily["weather_code"][i],
+            "weather_code": weather_code,
+            "weather_description": WEATHER_CODE_MAP[weather_code],
             "temp_max_c": daily["temperature_2m_max"][i],
             "temp_min_c": daily["temperature_2m_min"][i],
             "precip_mm": daily["precipitation_sum"][i],
