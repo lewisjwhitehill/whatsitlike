@@ -18,8 +18,16 @@ forecast_prompt = ChatPromptTemplate.from_messages(
         (
             "system",
             "You are a practical weather assistant for travelers. "
-            "Use ONLY the data provided by the user. If a field is missing or says it's unavailable, do not invent it. "
-            "Write clearly and concisely. Prefer actionable guidance.",
+            "Use ONLY the provided data; if something is missing/unavailable, say so briefly. "
+            "Be SHORT and skimmable. Do not add extra sections. Do not repeat raw JSON. "
+            "Hard limit: ~140 words (about 900 characters). "
+            "Output format (exact headings):\n"
+            "Overview: <1-2 sentences>\n"
+            "Key days:\n"
+            "- <up to 3 bullets; each bullet <= 12 words>\n"
+            "Pack/plan:\n"
+            "- <up to 5 bullets; each bullet <= 12 words>\n"
+            "Units: always show both C and F when you mention temps.",
         ),
         (
             "user",
@@ -27,12 +35,9 @@ forecast_prompt = ChatPromptTemplate.from_messages(
             "Date range: {start_date} to {end_date}\n\n"
             "FORECAST (daily + summary stats):\n"
             "{forecast}\n\n"
-            "Task:\n"
-            "1) Give a short overview of the overall conditions across the date range.\n"
-            "2) Call out any notable day-to-day changes (warming/cooling trend, rainier days, etc.).\n"
-            "3) Provide practical packing / planning advice.\n"
-            "4) Include temperatures in BOTH Celsius and Fahrenheit.\n"
-            "5) If forecast summary stats are present, use them for numbers (don’t recompute).",
+            "Write the response using ONLY the data above. "
+            "Prefer summary stats for numbers when present; otherwise pick the most relevant daily values. "
+            "If precipitation/rain is not provided, do not speculate.",
         ),
     ]
 )
@@ -42,8 +47,16 @@ climatology_prompt = ChatPromptTemplate.from_messages(
         (
             "system",
             "You are a practical weather assistant for travelers. "
-            "Use ONLY the data provided by the user. If a field is missing or says it's unavailable, do not invent it. "
-            "This request is for historical/climatology context (what's typical), not a day-by-day forecast.",
+            "Use ONLY the provided data; if something is missing/unavailable, say so briefly. "
+            "This is climatology (what's typical), not a day-by-day forecast. "
+            "Hard limit: ~140 words (about 900 characters). "
+            "Output format (exact headings):\n"
+            "Typical conditions: <1-2 sentences>\n"
+            "What it means:\n"
+            "- <up to 3 bullets; each bullet <= 12 words>\n"
+            "Pack/plan:\n"
+            "- <up to 5 bullets; each bullet <= 12 words>\n"
+            "Units: always show both C and F when you mention temps.",
         ),
         (
             "user",
@@ -51,12 +64,8 @@ climatology_prompt = ChatPromptTemplate.from_messages(
             "Date range: {start_date} to {end_date}\n\n"
             "CLIMATOLOGY (historical averages over multiple years):\n"
             "{climatology}\n\n"
-            "Task:\n"
-            "1) Explain what conditions are typically like for that location and date range.\n"
-            "2) Interpret the averages (what they mean for comfort, rain likelihood, etc.).\n"
-            "3) Provide practical packing / planning advice.\n"
-            "4) Include temperatures in BOTH Celsius and Fahrenheit.\n"
-            "5) If years_analyzed is present, mention it as context.",
+            "If years_analyzed is present, mention it once in Typical conditions. "
+            "Do not guess rain/precip if it is not provided.",
         ),
     ]
 )
@@ -117,13 +126,25 @@ def formulate_response(query: str):
     # maybe add the content extraction as part of the pipeline?
     if forecast_payload is not None:
         result = forecast_chain.invoke(llm_data)
-        return result.content
+        return {
+            "summary": result.content,
+            "mode": "forecast",  # 0-like
+        }
+
     if climatology_payload is not None:
         result = climatology_chain.invoke(llm_data)
-        return result.content
+        return {
+            "summary": result.content,
+            "mode": "climatology",  # 1-like
+        }
 
-    # Fallback: nothing usable
+    # Fallback: nothing usable; do not call the LLM here
     llm_data["forecast"] = "Not available."
     llm_data["climatology"] = "Not available."
-    result = forecast_chain.invoke(llm_data)
-    return result.content
+    return {
+        "summary": (
+            f"No forecast or climatology data is available for {location_str} "
+            f"between {start_date} and {end_date}."
+        ),
+        "mode": "unavailable",
+    }
