@@ -6,7 +6,7 @@ import requests
 from api.geocode import geocodeCity
 from api.climatology import get_climatology_data
 from api.forecast import get_forecast_data
-from utils.date_parser import extract_date_range, is_near_term, format_date_for_api
+from utils.date_parser import extract_date_range, refine_date_range, format_date_for_api
 
 # load our env vars
 load_dotenv()
@@ -63,20 +63,36 @@ def get_city_weather(query: str) -> dict:
     
     # Prepare the structured weather data
     if start_date and end_date:
-        # returns date in YYYY-MM-DD format
-        start_date_str = format_date_for_api(start_date)
-        end_date_str = format_date_for_api(end_date)
 
         forecast = None
         climatology = None
-        near = 0
 
-        # Decide which backend to call based on how far out the dates are
-        if is_near_term(start_date, end_date):
-            forecast = get_forecast(location, start_date_str, end_date_str)
-            near = 1
+        # is it a forecast, climatology or hybrid report
+        refined_dates = refine_date_range(start_date, end_date)
+        report_type = refined_dates[0]
+        
+        if report_type == "forecast":
+            forecast_start_date, forecast_end_date = refined_dates[1]
+            forecast_start_date_str, forecast_end_date_str = format_date_for_api(forecast_start_date, forecast_end_date)
+            forecast = get_forecast(location, forecast_start_date_str, forecast_end_date_str)
+
+        elif report_type == "climatology":
+            climatology_start_date, climatology_end_date = refined_dates[2]
+            climatology_start_date_str, climatology_end_date_str = format_date_for_api(climatology_start_date, climatology_end_date)
+            climatology = get_climatology(location, climatology_start_date_str, climatology_end_date_str)
+
+        elif report_type == "hybrid":
+            forecast_start_date, forecast_end_date = refined_dates[1]
+            forecast_start_date_str, forecast_end_date_str = format_date_for_api(forecast_start_date, forecast_end_date)
+            forecast = get_forecast(location, forecast_start_date_str, forecast_end_date_str)
+
+            climatology_start_date, climatology_end_date = refined_dates[2]
+            climatology_start_date_str, climatology_end_date_str = format_date_for_api(climatology_start_date, climatology_end_date)
+            climatology = get_climatology(location, climatology_start_date_str, climatology_end_date_str)
         else:
-            climatology = get_climatology(location, start_date_str, end_date_str)
+            return {
+                "report_type": report_type
+            }
 
         return {
             "location": location,
@@ -89,7 +105,7 @@ def get_city_weather(query: str) -> dict:
             "end_date": end_date_str,
             "forecast": forecast,
             "climatology": climatology,
-            "near": near,
+            "report_type": report_type
         }
     else:
         return {"error": "No date range found in query"}

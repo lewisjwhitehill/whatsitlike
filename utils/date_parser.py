@@ -2,7 +2,7 @@
 Date parsing utilities for extracting date ranges from natural language queries.
 """
 from datetime import datetime, timedelta
-from typing import Optional, Tuple
+from typing import Optional, Tuple, List
 from dateutil import parser as date_parser
 import re
 
@@ -85,27 +85,66 @@ def extract_date_range(query: str) -> Tuple[Optional[str], Optional[datetime], O
     return query.strip(), None, None
 
 
-def is_near_term(start_date: Optional[datetime], end_date: Optional[datetime], days_threshold: int = 10) -> bool:
-    """
-    Determine if a date range is "near-term" (within threshold days from today).
-    
+def refine_date_range(start_date: Optional[datetime], end_date: Optional[datetime], days_threshold: int = 10) -> Tuple[Optional[str], Optional[Tuple[datetime, datetime]], Optional[Tuple[datetime, datetime]]]:
+    """Split a date range into forecast and climatology sub-ranges when it overlaps.
+
+    This is meant for the edge case where the start date is within the near-term
+    forecast window (<= `days_threshold` days from today), but the end date extends
+    beyond that window.
+
+    Rules:
+    - Forecast range includes dates from start_date up through the threshold day.
+    - Climatology range starts the day AFTER the threshold day and runs through end_date.
+
     Args:
-        start_date: Start date of the range
-        end_date: End date of the range
-        days_threshold: Number of days to consider as "near-term" (default: 10)
-    
+        start_date: Datetime obj start date
+        end_date Datetime obj end date
+        days_threshold: Near-term cutoff in days from today (default: 10).
+
     Returns:
-        True if the date range is within the threshold, False otherwise
+        (forecast_range, climatology_range)
+
+        Each range is either:
+        - a tuple (start_datetime, end_datetime), or
+        - None if that portion does not exist for the input range.
+
+    Raises:
+        ValueError: if the date range cannot be parsed.
     """
-    if start_date is None:
-        return False
-    
-    today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+
+    # Normalize to date boundaries (midnight).
     start_date = start_date.replace(hour=0, minute=0, second=0, microsecond=0)
-    
-    days_until_start = (start_date - today).days
-    
-    return 0 <= days_until_start <= days_threshold
+    end_date = end_date.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    if end_date < start_date:
+        raise ValueError("End date is before start date")
+
+    today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    threshold_date = today + timedelta(days=days_threshold)
+
+    forecast_range: Optional[Tuple[datetime, datetime]] = None
+    climatology_range: Optional[Tuple[datetime, datetime]] = None
+    report_type: Optional[str] = None
+
+    # Entirely in forecast window
+    if end_date <= threshold_date:
+        forecast_range = (start_date, end_date)
+        return "hybrid", forecast_range, None
+
+    # Entirely beyond forecast window (climatology)
+    if start_date > threshold_date:
+        climatology_range = (start_date, end_date)
+        return "climatology", None, climatology_range
+
+    # Overlapping (hybrid)
+    forecast_end = min(end_date, threshold_date)
+    forecast_range = (start_date, forecast_end)
+
+    clim_start = threshold_date + timedelta(days=1)
+    if clim_start <= end_date:
+        climatology_range = (clim_start, end_date)
+
+    return "hybrid", forecast_range, climatology_range
 
 
 def format_date_for_api(date: datetime) -> str:
