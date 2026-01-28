@@ -1,6 +1,9 @@
 fastapi
 uvicorn[standard]
+pydantic
+requests
+python-dateutil
 python-dotenv
-httpx
 langchain
-langchain-openai        
+langchain-openai
+httpx

@@ -13,26 +13,31 @@ class GeocodeResult:
     tz: str | None = None
 
 
-def geocodeCity(q: str) -> GeocodeResult:
-	params = {
-		"name": q,
+def geocodeCity(location_name: str, country: str) -> GeocodeResult:
+  """
+    location_name: string 
+    country: ISO-2 country code (e.g. 'US', 'FR')
+  """
+  params = {
+    "name": location_name,
+    "country": country,
     "count": 1,
     "language": "en",
     "format": "json",
   }   
-     
-	res = requests.get(OM_GEOCODE, params=params, timeout=10)
-	if not res.ok:
-		raise RuntimeError(f"Geocoding failed: {res.status_code}")
-     
-	data = res.json()
-	results = data.get("results") or []
-	if not results:
-		raise ValueError("No results for that place.")
-     
-	r = results[0]
-	return GeocodeResult(
-        name=r["name"],
+      
+  res = requests.get(OM_GEOCODE, params=params, timeout=10)
+  if not res.ok:
+    raise RuntimeError(f"Geocoding failed: {res.status_code}")
+      
+  data = res.json()
+  results = data.get("results") or []
+  if not results:
+    raise ValueError("No results for that place.")
+      
+  r = results[0]
+  return GeocodeResult(
+        name=r.get("name"),
         latitude=r["latitude"],
         longitude=r["longitude"],
         country=r.get("country"),

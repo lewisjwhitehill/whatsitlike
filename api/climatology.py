@@ -2,15 +2,15 @@ import requests
 from datetime import datetime, date
 from api.geocode import geocodeCity
 
-def get_climatology_data(city: str, start_date: str, end_date: str, years_back: int = 10) -> dict:
+def get_climatology_data(city: str, country: str, start_date: str, end_date: str, years_back: int = 10) -> dict:
     """
     start_date/end_date must be 'YYYY-MM-DD'
     Computes averages for that month/day window across the last `years_back` years.
     """
-    location = geocodeCity(city)
+    location = geocodeCity(city, country)
     lat = location.latitude
     lon = location.longitude
-
+    # convert back to date time as we rely on datetime object fields for computation
     start_dt = datetime.strptime(start_date, "%Y-%m-%d").date()
     end_dt = datetime.strptime(end_date, "%Y-%m-%d").date()
 

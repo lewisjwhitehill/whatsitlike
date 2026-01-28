@@ -13,7 +13,7 @@ WEATHER_CODE_MAP = {
     95: "Thunderstorm",
 }
 
-def get_forecast_data(city: str, start_date: str, end_date: str):
+def get_forecast_data(city: str, country: str, start_date: str, end_date: str):
     """
     Get weather forecast for a city within a date range.
     
@@ -22,7 +22,7 @@ def get_forecast_data(city: str, start_date: str, end_date: str):
         start_date: Start date in YYYY-MM-DD format
         end_date: End date in YYYY-MM-DD format
     """
-    location = geocodeCity(city)
+    location = geocodeCity(city, country)
     lat = location.latitude
     lon = location.longitude
 
@@ -46,8 +46,18 @@ def get_forecast_data(city: str, start_date: str, end_date: str):
     }
 
     # Request to Open Meteo
-    res = requests.get("https://api.open-meteo.com/v1/forecast", params=params, timeout=10)
-    res.raise_for_status()
+    try:
+        res = requests.get(
+            "https://api.open-meteo.com/v1/forecast",
+            params=params,
+            timeout=10,
+        )
+        print("DEBUG, STATUS:", res.status_code)
+        print("DEBUG, TEXT:", res.text[:600])
+        res.raise_for_status()
+    except requests.exceptions.RequestException as e:
+        print("DEBUG, REQUEST FAILED:", e)
+        raise
     data = res.json()
 
     daily = data["daily"]
@@ -58,7 +68,7 @@ def get_forecast_data(city: str, start_date: str, end_date: str):
         days.append({
             "date": date,
             "weather_code": weather_code,
-            "weather_description": WEATHER_CODE_MAP[weather_code],
+            "weather_description": WEATHER_CODE_MAP.get(weather_code, "Unknown"),
             "temp_max_c": daily["temperature_2m_max"][i],
             "temp_min_c": daily["temperature_2m_min"][i],
             "precip_mm": daily["precipitation_sum"][i],

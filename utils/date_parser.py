@@ -43,7 +43,7 @@ def extract_date_range(query: str) -> Tuple[Optional[str], Optional[datetime], O
     match = re.search(month_pattern, query, re.IGNORECASE)
     
     if match:
-        month_name = match.group(1)
+        month_name = match.group(1).title()
         start_day = int(match.group(2))
         end_day = int(match.group(3)) if match.group(3) else start_day
         
@@ -86,7 +86,8 @@ def extract_date_range(query: str) -> Tuple[Optional[str], Optional[datetime], O
 
 
 def refine_date_range(start_date: Optional[datetime], end_date: Optional[datetime], days_threshold: int = 10) -> Tuple[Optional[str], Optional[Tuple[datetime, datetime]], Optional[Tuple[datetime, datetime]]]:
-    """Split a date range into forecast and climatology sub-ranges when it overlaps.
+    """Split a date range into forecast and climatology sub-ranges when it overlaps,
+    as well as formatting dates for api calls.
 
     This is meant for the edge case where the start date is within the near-term
     forecast window (<= `days_threshold` days from today), but the end date extends
@@ -102,7 +103,11 @@ def refine_date_range(start_date: Optional[datetime], end_date: Optional[datetim
         days_threshold: Near-term cutoff in days from today (default: 10).
 
     Returns:
-        (forecast_range, climatology_range)
+        (report_type, forecast_range, climatology_range)
+
+        Report type is either:
+        - "climatology", or 
+        - "hybrid"
 
         Each range is either:
         - a tuple (start_datetime, end_datetime), or
@@ -116,25 +121,30 @@ def refine_date_range(start_date: Optional[datetime], end_date: Optional[datetim
     start_date = start_date.replace(hour=0, minute=0, second=0, microsecond=0)
     end_date = end_date.replace(hour=0, minute=0, second=0, microsecond=0)
 
-    if end_date < start_date:
-        raise ValueError("End date is before start date")
-
     today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
     threshold_date = today + timedelta(days=days_threshold)
 
+    if start_date < today:
+        start_date = today
+
+    if end_date < start_date:
+        raise ValueError("End date is before start date")
+
+
+
     forecast_range: Optional[Tuple[datetime, datetime]] = None
     climatology_range: Optional[Tuple[datetime, datetime]] = None
-    report_type: Optional[str] = None
 
     # Entirely in forecast window
     if end_date <= threshold_date:
         forecast_range = (start_date, end_date)
-        return "hybrid", forecast_range, None
+        climatology_range = (start_date, end_date)
+        return "hybrid", format_dates_for_api(forecast_range), format_dates_for_api(climatology_range)
 
     # Entirely beyond forecast window (climatology)
     if start_date > threshold_date:
         climatology_range = (start_date, end_date)
-        return "climatology", None, climatology_range
+        return "climatology", None, format_dates_for_api(climatology_range)
 
     # Overlapping (hybrid)
     forecast_end = min(end_date, threshold_date)
@@ -144,10 +154,10 @@ def refine_date_range(start_date: Optional[datetime], end_date: Optional[datetim
     if clim_start <= end_date:
         climatology_range = (clim_start, end_date)
 
-    return "hybrid", forecast_range, climatology_range
+    return "hybrid", format_dates_for_api(forecast_range), format_dates_for_api(climatology_range)
 
 
-def format_date_for_api(date: datetime) -> str:
+def format_dates_for_api(daterange: Tuple[datetime,  datetime]) -> Tuple[str, str]:
     """
     Format a datetime object for API calls (YYYY-MM-DD format).
     
@@ -157,4 +167,5 @@ def format_date_for_api(date: datetime) -> str:
     Returns:
         Formatted date string
     """
-    return date.strftime("%Y-%m-%d")
+    start_date, end_date = daterange
+    return start_date.strftime("%Y-%m-%d"), end_date.strftime("%Y-%m-%d")
